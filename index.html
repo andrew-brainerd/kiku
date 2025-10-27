@@ -3,8 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>kiku</title>
+    <title>kiku - Voice Command App</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         margin: 0;
@@ -17,24 +21,238 @@
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
       }
+
       .container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        max-width: 600px;
+        width: 100%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      }
+
+      h1 {
+        font-size: 2.5em;
+        margin: 0 0 10px 0;
         text-align: center;
       }
-      h1 {
-        font-size: 3em;
-        margin: 0;
-      }
-      p {
-        font-size: 1.2em;
+
+      .subtitle {
+        text-align: center;
         opacity: 0.9;
+        margin-bottom: 30px;
+        font-size: 1.1em;
+      }
+
+      .status-section {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ff4444;
+      }
+
+      .status-dot.active {
+        background: #44ff44;
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+
+      .controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      button {
+        flex: 1;
+        padding: 15px 30px;
+        font-size: 1em;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        color: white;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-init {
+        background: #4CAF50;
+      }
+
+      .btn-init:hover:not(:disabled) {
+        background: #45a049;
+        transform: translateY(-2px);
+      }
+
+      .btn-record {
+        background: #2196F3;
+      }
+
+      .btn-record:hover:not(:disabled) {
+        background: #0b7dda;
+        transform: translateY(-2px);
+      }
+
+      .btn-record.recording {
+        background: #f44336;
+        animation: recordingPulse 1s infinite;
+      }
+
+      @keyframes recordingPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+
+      .btn-stop {
+        background: #ff9800;
+      }
+
+      .btn-stop:hover:not(:disabled) {
+        background: #e68900;
+        transform: translateY(-2px);
+      }
+
+      .transcription {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 10px;
+        min-height: 100px;
+        margin-bottom: 20px;
+      }
+
+      .transcription h3 {
+        margin-top: 0;
+        font-size: 1.2em;
+      }
+
+      .transcription-text {
+        font-size: 1.1em;
+        line-height: 1.6;
+        min-height: 60px;
+      }
+
+      .command-result {
+        background: rgba(76, 175, 80, 0.3);
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 15px;
+        border-left: 4px solid #4CAF50;
+      }
+
+      .error {
+        background: rgba(244, 67, 54, 0.3);
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 15px;
+        border-left: 4px solid #f44336;
+      }
+
+      .model-path-section {
+        margin-bottom: 20px;
+      }
+
+      .model-path-section input {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        font-size: 1em;
+        margin-top: 10px;
+      }
+
+      .model-path-section input::placeholder {
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      .help-text {
+        font-size: 0.9em;
+        opacity: 0.8;
+        margin-top: 8px;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Welcome to kiku</h1>
-      <p>Your Tauri app is ready!</p>
+      <h1>kiku</h1>
+      <p class="subtitle">Voice Command Application</p>
+
+      <div class="status-section">
+        <div class="status-indicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">Not initialized</span>
+        </div>
+        <div class="status-indicator" style="display: none;" id="recordingStatus">
+          <div class="status-dot active"></div>
+          <span>Recording...</span>
+        </div>
+      </div>
+
+      <div class="model-path-section">
+        <label for="modelPath"><strong>Whisper Model Path:</strong></label>
+        <input
+          type="text"
+          id="modelPath"
+          placeholder="e.g., C:/models/ggml-base.en.bin"
+          value="C:/models/ggml-base.en.bin"
+        />
+        <div class="help-text">
+          Download Whisper models from:
+          <a href="https://huggingface.co/ggerganov/whisper.cpp" target="_blank" style="color: #a8daff;">
+            Hugging Face
+          </a>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn-init" id="initBtn">
+          Initialize Voice System
+        </button>
+      </div>
+
+      <div class="controls" id="recordingControls" style="display: none;">
+        <button class="btn-record" id="recordBtn">
+          Start Recording
+        </button>
+        <button class="btn-stop" id="stopBtn" disabled>
+          Stop & Transcribe
+        </button>
+      </div>
+
+      <div class="transcription">
+        <h3>Transcription Result:</h3>
+        <div class="transcription-text" id="transcriptionResult">
+          Press "Start Recording" and speak your command...
+        </div>
+        <div id="commandResult"></div>
+      </div>
     </div>
-    <script src="src/main.js"></script>
+
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>
