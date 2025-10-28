@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { Store } from '@tauri-apps/plugin-store';
 
 interface ModelInfo {
   name: string;
@@ -57,6 +58,34 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
   const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [customPath, setCustomPath] = useState<string>(modelPath);
+
+  // Load saved selected model on mount
+  useEffect(() => {
+    const loadSelectedModel = async () => {
+      try {
+        const store = await Store.load('settings.json');
+        const savedModel = await store.get<string>('selectedModel');
+        if (savedModel) {
+          setSelectedModel(savedModel);
+        }
+      } catch (error) {
+        console.log('Error loading selected model', error);
+      }
+    };
+    void loadSelectedModel();
+  }, []);
+
+  // Handle model selection change and save to store
+  const handleModelChange = async (newModel: string): Promise<void> => {
+    setSelectedModel(newModel);
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('selectedModel', newModel);
+      await store.save();
+    } catch (error) {
+      console.error('Failed to save selected model', error);
+    }
+  };
 
   const handleDownload = async (): Promise<void> => {
     try {
@@ -132,7 +161,7 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
           <label className="mb-2 block text-sm font-medium">Select Model</label>
           <select
             value={selectedModel}
-            onChange={e => setSelectedModel(e.target.value)}
+            onChange={e => void handleModelChange(e.target.value)}
             disabled={downloading}
             className="w-full rounded-lg bg-white/10 px-4 py-2 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:opacity-50"
           >
