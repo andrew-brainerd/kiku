@@ -21,7 +21,8 @@
       "Bash(pnpm run lint:*)",
       "Bash(pnpm run lint:fix:*)",
       "Bash(pnpm run check:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

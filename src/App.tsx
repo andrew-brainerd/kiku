@@ -11,15 +11,14 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('main');
   const [modelPath, setModelPath] = useState<string>('C:/models/ggml-base.en.bin');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
-  const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [transcriptionText, setTranscriptionText] = useState<string>(
-    'Press "Start Recording" and speak your command...'
+    'Initializing...'
   );
   const [message, setMessage] = useState<Message | null>(null);
 
-  // Load saved settings on mount
+  // Load saved settings on mount and auto-initialize
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -35,6 +34,40 @@ function App() {
         // Check if voice system is already initialized
         const initialized = await invoke<boolean>('is_voice_initialized');
         setIsInitialized(initialized);
+
+        // Auto-initialize and start background listening if not already initialized
+        if (!initialized && savedPath) {
+          try {
+            setIsProcessing(true);
+            setTranscriptionText('Initializing voice system...');
+
+            // Initialize the voice system
+            await invoke<string>('initialize_voice', { modelPath: savedPath });
+            setIsInitialized(true);
+
+            // Start background listening
+            await invoke<string>('start_background_listening');
+            setIsListening(true);
+            setTranscriptionText('Listening for wake word ("kiku" or "computer")...');
+
+            // Start polling for wake word detection (deferred to next tick)
+            setTimeout(() => void startWakeWordDetection(), 0);
+
+            setMessage({
+              type: 'success',
+              text: 'Voice system initialized and listening started automatically'
+            });
+          } catch (error) {
+            console.error('Auto-initialization failed:', error);
+            setMessage({
+              type: 'error',
+              text: `Auto-initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            setTranscriptionText('Press "Start Listening" to begin...');
+          } finally {
+            setIsProcessing(false);
+          }
+        }
       } catch (error) {
         console.log('Error loading settings', error);
       }
@@ -71,67 +104,6 @@ function App() {
         type: 'error',
         text: `Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
       });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleStartRecording = async (): Promise<void> => {
-    if (!isInitialized) {
-      setMessage({ type: 'error', text: 'Please initialize the voice system first' });
-      return;
-    }
-
-    try {
-      setMessage(null);
-      setTranscriptionText('Listening...');
-      await invoke<string>('start_recording');
-      setIsRecording(true);
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `Failed to start recording: ${error instanceof Error ? error.message : String(error)}`,
-      });
-      setTranscriptionText('Press "Start Recording" and speak your command...');
-    }
-  };
-
-  const handleStopRecording = async (): Promise<void> => {
-    try {
-      setIsProcessing(true);
-      setTranscriptionText('Processing...');
-
-      const voiceCommand = await invoke<VoiceCommand>('stop_recording');
-      setIsRecording(false);
-
-      // Display the transcription
-      setTranscriptionText(voiceCommand.text || '(No speech detected)');
-
-      // Process the command
-      const commandType = await invoke<CommandType | null>('process_voice_command', {
-        command: voiceCommand,
-      });
-
-      if (commandType) {
-        const messageText = COMMAND_MESSAGES[commandType] || `Command triggered: ${commandType}`;
-        setMessage({
-          type: 'command',
-          text: messageText,
-          commandType,
-        });
-      } else {
-        setMessage({
-          type: 'info',
-          text: 'No matching command found. Try: "hello", "start", "stop", "status", or "help"',
-        });
-      }
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `Failed to transcribe: ${error instanceof Error ? error.message : String(error)}`,
-      });
-      setIsRecording(false);
-      setTranscriptionText('Press "Start Recording" and speak your command...');
     } finally {
       setIsProcessing(false);
     }
@@ -263,12 +235,6 @@ function App() {
             <span>Listening for wake words...</span>
           </div>
         )}
-        {isRecording && (
-          <div className="flex items-center gap-2.5">
-            <div className="status-dot active" />
-            <span>Recording...</span>
-          </div>
-        )}
       </div>
 
       {/* Initialization Section */}
@@ -313,63 +279,33 @@ function App() {
 
       {/* Voice Controls */}
       {isInitialized && (
-        <>
-          {/* Wake Word Listening */}
-          <div className="mb-5">
-            <h3 className="mb-3 text-lg font-semibold">Background Listening (Wake Word Mode)</h3>
-            <p className="mb-3 text-sm opacity-80">
-              Say "kiku" or "computer" followed by your command. Recording will auto-stop when you
-              finish speaking.
-            </p>
-            <div className="flex gap-4">
-              <button
-                className={`btn-base ${
-                  isListening
-                    ? 'animate-pulse bg-purple-600 hover:bg-purple-700'
-                    : 'bg-purple-500 hover:bg-purple-600'
-                }`}
-                onClick={handleStartListening}
-                disabled={isListening || isProcessing || isRecording}
-              >
-                {isListening ? 'Listening...' : 'Start Listening'}
-              </button>
-              <button
-                className="btn-base bg-red-500 hover:bg-red-600"
-                onClick={handleStopListening}
-                disabled={!isListening || isProcessing}
-              >
-                Stop Listening
-              </button>
-            </div>
+        <div className="mb-5">
+          <h3 className="mb-3 text-lg font-semibold">Voice Commands</h3>
+          <p className="mb-3 text-sm opacity-80">
+            Say "kiku" or "computer" followed by your command. Recording will auto-stop when you
+            finish speaking.
+          </p>
+          <div className="flex gap-4">
+            <button
+              className={`btn-base ${
+                isListening
+                  ? 'animate-pulse bg-purple-600 hover:bg-purple-700'
+                  : 'bg-purple-500 hover:bg-purple-600'
+              }`}
+              onClick={handleStartListening}
+              disabled={isListening || isProcessing}
+            >
+              {isListening ? 'Listening...' : 'Start Listening'}
+            </button>
+            <button
+              className="btn-base bg-red-500 hover:bg-red-600"
+              onClick={handleStopListening}
+              disabled={!isListening || isProcessing}
+            >
+              Stop Listening
+            </button>
           </div>
-
-          {/* Manual Recording */}
-          <div className="mb-5">
-            <h3 className="mb-3 text-lg font-semibold">Manual Recording</h3>
-            <p className="mb-3 text-sm opacity-80">
-              Manually start and stop recording, or use the manual button which auto-stops on
-              silence.
-            </p>
-            <div className="flex gap-4">
-              <button
-                className={`btn-base bg-blue-600 hover:bg-blue-700 ${
-                  isRecording ? 'animate-recording-pulse bg-red-500 hover:bg-red-600' : ''
-                }`}
-                onClick={handleStartRecording}
-                disabled={isRecording || isProcessing || isListening}
-              >
-                Start Recording
-              </button>
-              <button
-                className="btn-base bg-orange-500 hover:bg-orange-600"
-                onClick={handleStopRecording}
-                disabled={!isRecording || isProcessing || isListening}
-              >
-                Stop & Transcribe
-              </button>
-            </div>
-          </div>
-        </>
+        </div>
       )}
 
       {/* Transcription Result */}
