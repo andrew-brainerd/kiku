@@ -10,6 +10,11 @@ interface ModelInfo {
   filename: string;
 }
 
+interface AudioDevice {
+  name: string;
+  is_default: boolean;
+}
+
 const AVAILABLE_MODELS: ModelInfo[] = [
   {
     name: 'Tiny (English)',
@@ -59,6 +64,8 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [customPath, setCustomPath] = useState<string>(modelPath);
   const [modelsDirectory, setModelsDirectory] = useState<string>('');
+  const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>('');
 
   // Load saved selected model and available models on mount
   useEffect(() => {
@@ -70,6 +77,12 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
           setSelectedModel(savedModel);
         }
 
+        // Load saved audio device
+        const savedDevice = await store.get<string>('audioDevice');
+        if (savedDevice) {
+          setSelectedDevice(savedDevice);
+        }
+
         // Load available models from AppData
         const available = await invoke<string[]>('list_available_models');
         setDownloadedModels(available);
@@ -77,6 +90,18 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
         // Get models directory path
         const modelsDir = await invoke<string>('get_models_directory');
         setModelsDirectory(modelsDir);
+
+        // Load available audio devices
+        const devices = await invoke<AudioDevice[]>('list_audio_devices');
+        setAudioDevices(devices);
+
+        // If no device selected, use default
+        if (!savedDevice && devices.length > 0) {
+          const defaultDevice = devices.find(d => d.is_default);
+          if (defaultDevice) {
+            setSelectedDevice(defaultDevice.name);
+          }
+        }
       } catch (error) {
         console.log('Error loading settings', error);
       }
@@ -93,6 +118,24 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
       await store.save();
     } catch (error) {
       console.error('Failed to save selected model', error);
+    }
+  };
+
+  // Handle audio device selection change
+  const handleDeviceChange = async (deviceName: string): Promise<void> => {
+    setSelectedDevice(deviceName);
+    try {
+      // Save to store
+      const store = await Store.load('settings.json');
+      await store.set('audioDevice', deviceName);
+      await store.save();
+
+      // Update the voice handler
+      await invoke('set_audio_device', { deviceName: deviceName || null });
+      setStatusMessage('Audio device updated');
+    } catch (error) {
+      console.error('Failed to set audio device', error);
+      setStatusMessage(`Failed to set audio device: ${error}`);
     }
   };
 
@@ -243,6 +286,38 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
         >
           Save Path
         </button>
+      </div>
+
+      {/* Audio Device Selection */}
+      <div className="mt-8 rounded-2xl bg-white/5 p-6">
+        <h2 className="mb-4 text-xl font-semibold">Audio Input Device</h2>
+        <p className="mb-4 text-sm text-white/70">
+          Select the microphone or audio input device for voice commands
+        </p>
+
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium">Input Device</label>
+          <select
+            value={selectedDevice}
+            onChange={e => void handleDeviceChange(e.target.value)}
+            className="w-full rounded-lg bg-white/10 px-4 py-2 text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
+            <option value="" className="bg-gray-800">
+              System Default
+            </option>
+            {audioDevices.map(device => (
+              <option key={device.name} value={device.name} className="bg-gray-800">
+                {device.name} {device.is_default ? '(Default)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {audioDevices.length === 0 && (
+          <p className="text-sm text-yellow-400">
+            No audio input devices detected. Please check your system audio settings.
+          </p>
+        )}
       </div>
 
       {/* Downloaded Models */}

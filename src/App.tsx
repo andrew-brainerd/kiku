@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { VoiceCommand, Message, CommandType } from './types';
 import { COMMAND_MESSAGES } from './types';
@@ -17,6 +17,7 @@ function App() {
     'Initializing...'
   );
   const [message, setMessage] = useState<Message | null>(null);
+  const initializingRef = useRef<boolean>(false);
 
   // Load saved settings on mount and auto-initialize
   useEffect(() => {
@@ -53,7 +54,8 @@ function App() {
         setIsInitialized(initialized);
 
         // Auto-initialize and start background listening if not already initialized
-        if (!initialized && savedPath) {
+        if (!initialized && savedPath && !initializingRef.current) {
+          initializingRef.current = true;
           try {
             setIsProcessing(true);
             setTranscriptionText('Initializing voice system...');
@@ -61,6 +63,17 @@ function App() {
             // Initialize the voice system
             await invoke<string>('initialize_voice', { modelPath: savedPath });
             setIsInitialized(true);
+
+            // Set audio device after initialization
+            const savedDevice = await store.get<string>('audioDevice');
+            if (savedDevice) {
+              try {
+                await invoke('set_audio_device', { deviceName: savedDevice });
+                console.log('Audio device set to:', savedDevice);
+              } catch (error) {
+                console.log('Error setting audio device:', error);
+              }
+            }
 
             // Start background listening
             await invoke<string>('start_background_listening');
@@ -81,6 +94,7 @@ function App() {
               text: `Auto-initialization failed: ${error instanceof Error ? error.message : String(error)}`,
             });
             setTranscriptionText('Press "Start Listening" to begin...');
+            initializingRef.current = false; // Reset on error so user can retry
           } finally {
             setIsProcessing(false);
           }
@@ -205,9 +219,22 @@ function App() {
         // Small delay before next iteration
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
-        // Error in detection loop, stop listening
+        // Error in detection loop, log it and stop listening
         console.error('Wake word detection error:', error);
-        await handleStopListening();
+        setMessage({
+          type: 'error',
+          text: `Wake word detection failed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+
+        // Stop listening gracefully
+        try {
+          await invoke<string>('stop_background_listening');
+        } catch (stopError) {
+          console.error('Error stopping background listening:', stopError);
+        }
+
+        setIsListening(false);
+        setTranscriptionText('Press "Start Listening" to begin...');
         break;
       }
     }

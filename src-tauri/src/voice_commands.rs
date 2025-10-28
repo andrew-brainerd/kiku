@@ -29,7 +29,7 @@ pub struct ListeningEvent {
 }
 
 pub struct VoiceCommandHandler {
-    recorder: Arc<AudioRecorder>,
+    recorder: Arc<Mutex<AudioRecorder>>,
     transcriber: Arc<WhisperTranscriber>,
     is_initialized: Arc<Mutex<bool>>,
     is_listening: Arc<AtomicBool>,
@@ -40,13 +40,18 @@ pub struct VoiceCommandHandler {
 impl VoiceCommandHandler {
     pub fn new(model_path: PathBuf) -> Self {
         Self {
-            recorder: Arc::new(AudioRecorder::new()),
+            recorder: Arc::new(Mutex::new(AudioRecorder::new())),
             transcriber: Arc::new(WhisperTranscriber::new(model_path)),
             is_initialized: Arc::new(Mutex::new(false)),
             is_listening: Arc::new(AtomicBool::new(false)),
             sample_rate: 16000, // Whisper expects 16kHz
             wake_words: vec!["kiku".to_string(), "computer".to_string()],
         }
+    }
+
+    pub fn set_audio_device(&self, device_name: Option<String>) {
+        let mut recorder = self.recorder.lock();
+        recorder.set_device(device_name);
     }
 
     pub fn initialize(&self) -> Result<()> {
@@ -70,6 +75,7 @@ impl VoiceCommandHandler {
         }
 
         self.recorder
+            .lock()
             .start_recording()
             .context("Failed to start recording")?;
 
@@ -77,7 +83,8 @@ impl VoiceCommandHandler {
     }
 
     pub fn stop_recording_and_transcribe(&self) -> Result<VoiceCommand> {
-        let samples = self.recorder.stop_recording();
+        let recorder = self.recorder.lock();
+        let samples = recorder.stop_recording();
 
         if samples.is_empty() {
             return Err(anyhow::anyhow!("No audio data recorded"));
@@ -87,9 +94,7 @@ impl VoiceCommandHandler {
         let original_sample_rate = 48000; // You might want to detect this dynamically
 
         // Convert to mono 16kHz as required by Whisper
-        let resampled = self
-            .recorder
-            .convert_to_16khz_mono(&samples, original_sample_rate);
+        let resampled = recorder.convert_to_16khz_mono(&samples, original_sample_rate);
 
         // Transcribe the audio
         let text = self
@@ -109,7 +114,7 @@ impl VoiceCommandHandler {
 
     pub fn get_recording_status(&self) -> RecordingStatus {
         RecordingStatus {
-            is_recording: self.recorder.is_recording(),
+            is_recording: self.recorder.lock().is_recording(),
             is_listening: self.is_listening.load(Ordering::Relaxed),
             duration_ms: 0, // Could track this if needed
         }
@@ -140,8 +145,9 @@ impl VoiceCommandHandler {
         self.is_listening.store(false, Ordering::Relaxed);
 
         // Stop recording if currently recording
-        if self.recorder.is_recording() {
-            self.recorder.stop_recording();
+        let recorder = self.recorder.lock();
+        if recorder.is_recording() {
+            recorder.stop_recording();
         }
 
         Ok(())
@@ -174,7 +180,7 @@ impl VoiceCommandHandler {
     /// Record a command after wake word detected, auto-stopping on silence
     pub fn record_command_with_vad(&self) -> Result<VoiceCommand> {
         // Start recording
-        self.recorder.start_recording()
+        self.recorder.lock().start_recording()
             .context("Failed to start recording")?;
 
         // Create VAD with 1.5 second silence threshold
@@ -194,7 +200,7 @@ impl VoiceCommandHandler {
             }
 
             // Get current samples
-            let samples = self.recorder.get_current_samples();
+            let samples = self.recorder.lock().get_current_samples();
 
             // Process with VAD
             if samples.len() >= vad.frame_size() {
@@ -211,7 +217,8 @@ impl VoiceCommandHandler {
         }
 
         // Stop recording and transcribe
-        let samples = self.recorder.stop_recording();
+        let recorder = self.recorder.lock();
+        let samples = recorder.stop_recording();
 
         if samples.is_empty() {
             return Err(anyhow::anyhow!("No audio data recorded"));
@@ -219,7 +226,7 @@ impl VoiceCommandHandler {
 
         // Convert to 16kHz mono
         let original_sample_rate = 48000;
-        let resampled = self.recorder.convert_to_16khz_mono(&samples, original_sample_rate);
+        let resampled = recorder.convert_to_16khz_mono(&samples, original_sample_rate);
 
         // Transcribe the audio
         let text = self.transcriber.transcribe(&resampled)

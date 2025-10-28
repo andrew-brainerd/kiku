@@ -3,10 +3,18 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SizedSample, StreamConfig};
 use parking_lot::Mutex;
 use std::sync::Arc;
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioDeviceInfo {
+    pub name: String,
+    pub is_default: bool,
+}
 
 pub struct AudioRecorder {
     samples: Arc<Mutex<Vec<f32>>>,
     is_recording: Arc<Mutex<bool>>,
+    device_name: Option<String>,
 }
 
 impl AudioRecorder {
@@ -14,14 +22,47 @@ impl AudioRecorder {
         Self {
             samples: Arc::new(Mutex::new(Vec::new())),
             is_recording: Arc::new(Mutex::new(false)),
+            device_name: None,
         }
+    }
+
+    pub fn set_device(&mut self, device_name: Option<String>) {
+        self.device_name = device_name;
+    }
+
+    pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>> {
+        let host = cpal::default_host();
+        let default_device = host.default_input_device();
+        let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+
+        let mut devices = Vec::new();
+
+        for device in host.input_devices()? {
+            if let Ok(name) = device.name() {
+                let is_default = Some(&name) == default_name.as_ref();
+                devices.push(AudioDeviceInfo {
+                    name,
+                    is_default,
+                });
+            }
+        }
+
+        Ok(devices)
     }
 
     pub fn start_recording(&self) -> Result<()> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .context("No input device available")?;
+
+        let device = if let Some(ref device_name) = self.device_name {
+            // Find device by name
+            host.input_devices()?
+                .find(|d| d.name().ok().as_ref() == Some(device_name))
+                .context(format!("Device '{}' not found", device_name))?
+        } else {
+            // Use default device
+            host.default_input_device()
+                .context("No input device available")?
+        };
 
         let config = device
             .default_input_config()

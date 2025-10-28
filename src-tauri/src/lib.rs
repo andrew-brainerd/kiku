@@ -3,6 +3,8 @@ mod vad;
 mod voice_commands;
 mod whisper;
 
+use audio::AudioDeviceInfo;
+use audio::AudioRecorder;
 use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -244,6 +246,23 @@ async fn get_models_directory(app: tauri::AppHandle) -> Result<String, String> {
     Ok(models_dir.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn list_audio_devices() -> Result<Vec<AudioDeviceInfo>, String> {
+    AudioRecorder::list_input_devices()
+        .map_err(|e| format!("Failed to list audio devices: {}", e))
+}
+
+#[tauri::command]
+fn set_audio_device(state: State<AppState>, device_name: Option<String>) -> Result<(), String> {
+    let handler_lock = state.voice_handler.lock();
+    if let Some(handler) = handler_lock.as_ref() {
+        handler.set_audio_device(device_name);
+        Ok(())
+    } else {
+        Err("Voice system not initialized".to_string())
+    }
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -270,7 +289,9 @@ pub fn run() {
             download_model,
             get_model_path,
             list_available_models,
-            get_models_directory
+            get_models_directory,
+            list_audio_devices,
+            set_audio_device
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
