@@ -22,7 +22,12 @@
       "Bash(pnpm run lint:fix:*)",
       "Bash(pnpm run check:*)",
       "Bash(grep:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(pnpm run dev)",
+      "Bash(tasklist:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

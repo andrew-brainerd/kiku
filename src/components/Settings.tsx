@@ -169,9 +169,20 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
 
   const handleBrowse = async (): Promise<void> => {
     try {
+      // Extract directory from current path to use as default
+      let defaultPath: string | undefined;
+      if (customPath) {
+        // Handle both forward and backward slashes
+        const lastSlash = Math.max(customPath.lastIndexOf('/'), customPath.lastIndexOf('\\'));
+        if (lastSlash > 0) {
+          defaultPath = customPath.substring(0, lastSlash);
+        }
+      }
+
       const selected = await open({
         multiple: false,
         filters: [{ name: 'Whisper Models', extensions: ['bin'] }],
+        ...(defaultPath && { defaultPath }),
       });
 
       if (selected) {
@@ -190,25 +201,25 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
   };
 
   return (
-    <div className="w-full max-w-3xl rounded-3xl bg-white/10 px-10 py-12 backdrop-blur-lg">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Settings</h1>
+    <div className="w-full max-w-full rounded-3xl bg-white/10 px-4 py-6 backdrop-blur-lg sm:px-6 sm:py-8 md:max-w-4xl md:px-10 md:py-12">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold sm:text-3xl">Settings</h1>
         <button
           onClick={onBack}
-          className="rounded-xl bg-white/20 px-6 py-2 font-medium transition hover:bg-white/30"
+          className="w-full rounded-xl bg-white/20 px-6 py-2 font-medium transition hover:bg-white/30 sm:w-auto"
         >
           ← Back
         </button>
       </div>
 
       {/* Model Download Section */}
-      <div className="mb-8 rounded-2xl bg-white/5 p-6">
-        <h2 className="mb-4 text-xl font-semibold">Download Whisper Model</h2>
-        <p className="mb-4 text-sm text-white/70">
+      <div className="mb-6 rounded-2xl bg-white/5 p-4 sm:mb-8 sm:p-6">
+        <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">Download Whisper Model</h2>
+        <p className="mb-3 text-sm text-white/70 sm:mb-4">
           Download pre-trained Whisper models for offline voice recognition
         </p>
         {modelsDirectory && (
-          <p className="mb-4 text-xs text-white/60">
+          <p className="mb-3 break-all text-xs text-white/60 sm:mb-4">
             Models directory: <code className="rounded bg-white/10 px-1.5 py-0.5">{modelsDirectory}</code>
           </p>
         )}
@@ -232,7 +243,7 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="w-full rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-3 font-medium transition hover:from-blue-600 hover:to-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2.5 text-sm font-medium transition hover:from-blue-600 hover:to-purple-700 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:py-3 sm:text-base"
         >
           {downloading ? 'Downloading...' : 'Download Model'}
         </button>
@@ -255,25 +266,25 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
       </div>
 
       {/* Manual Model Path Section */}
-      <div className="rounded-2xl bg-white/5 p-6">
-        <h2 className="mb-4 text-xl font-semibold">Model Path</h2>
-        <p className="mb-4 text-sm text-white/70">
+      <div className="rounded-2xl bg-white/5 p-4 sm:p-6">
+        <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">Model Path</h2>
+        <p className="mb-3 text-sm text-white/70 sm:mb-4">
           Specify a custom path to your Whisper model file
         </p>
 
         <div className="mb-4">
           <label className="mb-2 block text-sm font-medium">Model File Path</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={customPath}
               onChange={e => setCustomPath(e.target.value)}
               placeholder="C:/models/ggml-base.en.bin"
-              className="flex-1 rounded-lg bg-white/10 px-4 py-2 backdrop-blur-sm transition hover:bg-white/20"
+              className="flex-1 rounded-lg bg-white/10 px-4 py-2 text-sm backdrop-blur-sm transition hover:bg-white/20"
             />
             <button
               onClick={handleBrowse}
-              className="rounded-lg bg-white/20 px-6 py-2 font-medium transition hover:bg-white/30"
+              className="rounded-lg bg-white/20 px-6 py-2 text-sm font-medium transition hover:bg-white/30 sm:whitespace-nowrap"
             >
               Browse
             </button>
@@ -282,16 +293,16 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
 
         <button
           onClick={handleSavePath}
-          className="w-full rounded-xl bg-white/20 px-6 py-3 font-medium transition hover:bg-white/30"
+          className="w-full rounded-xl bg-white/20 px-4 py-2.5 text-sm font-medium transition hover:bg-white/30 sm:px-6 sm:py-3 sm:text-base"
         >
           Save Path
         </button>
       </div>
 
       {/* Audio Device Selection */}
-      <div className="mt-8 rounded-2xl bg-white/5 p-6">
-        <h2 className="mb-4 text-xl font-semibold">Audio Input Device</h2>
-        <p className="mb-4 text-sm text-white/70">
+      <div className="mt-6 rounded-2xl bg-white/5 p-4 sm:mt-8 sm:p-6">
+        <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">Audio Input Device</h2>
+        <p className="mb-3 text-sm text-white/70 sm:mb-4">
           Select the microphone or audio input device for voice commands
         </p>
 
@@ -322,11 +333,11 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
 
       {/* Downloaded Models */}
       {downloadedModels.length > 0 && (
-        <div className="mt-8 rounded-2xl bg-white/5 p-6">
-          <h2 className="mb-4 text-xl font-semibold">Downloaded Models</h2>
+        <div className="mt-6 rounded-2xl bg-white/5 p-4 sm:mt-8 sm:p-6">
+          <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">Downloaded Models</h2>
           <ul className="space-y-2">
             {downloadedModels.map(model => (
-              <li key={model} className="flex items-center gap-2 text-sm">
+              <li key={model} className="flex items-center gap-2 break-all text-sm">
                 <span className="text-green-400">✓</span>
                 <span>{model}</span>
               </li>
