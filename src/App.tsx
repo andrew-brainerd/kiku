@@ -1,37 +1,33 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
-
-const COMMAND_MESSAGES = {
-  greeting: 'Hello! How can I help you?',
-  start_workflow: 'Starting workflow...',
-  stop_workflow: 'Stopping workflow...',
-  status_check: 'Status: All systems operational',
-  show_help: 'Available commands: hello, start, stop, status, help'
-};
+import type { VoiceCommand, Message, CommandType } from './types';
+import { COMMAND_MESSAGES } from './types';
 
 function App() {
-  const [modelPath, setModelPath] = useState('C:/models/ggml-base.en.bin');
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [transcriptionText, setTranscriptionText] = useState('Press "Start Recording" and speak your command...');
-  const [message, setMessage] = useState(null);
+  const [modelPath, setModelPath] = useState<string>('C:/models/ggml-base.en.bin');
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [transcriptionText, setTranscriptionText] = useState<string>(
+    'Press "Start Recording" and speak your command...'
+  );
+  const [message, setMessage] = useState<Message | null>(null);
 
   // Check if voice system is already initialized on mount
   useEffect(() => {
     const checkInitStatus = async () => {
       try {
-        const initialized = await invoke('is_voice_initialized');
+        const initialized = await invoke<boolean>('is_voice_initialized');
         setIsInitialized(initialized);
       } catch (error) {
-        console.log('Not initialized yet');
+        console.log('Not initialized yet', error);
       }
     };
-    checkInitStatus();
+    void checkInitStatus();
   }, []);
 
-  const handleInitialize = async () => {
+  const handleInitialize = async (): Promise<void> => {
     if (!modelPath) {
       setMessage({ type: 'error', text: 'Please enter a model path' });
       return;
@@ -40,17 +36,20 @@ function App() {
     try {
       setIsProcessing(true);
       setMessage(null);
-      const result = await invoke('initialize_voice', { modelPath });
+      const result = await invoke<string>('initialize_voice', { modelPath });
       setIsInitialized(true);
       setMessage({ type: 'success', text: result });
     } catch (error) {
-      setMessage({ type: 'error', text: `Initialization failed: ${error}` });
+      setMessage({
+        type: 'error',
+        text: `Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleStartRecording = async () => {
+  const handleStartRecording = async (): Promise<void> => {
     if (!isInitialized) {
       setMessage({ type: 'error', text: 'Please initialize the voice system first' });
       return;
@@ -59,43 +58,51 @@ function App() {
     try {
       setMessage(null);
       setTranscriptionText('Listening...');
-      await invoke('start_recording');
+      await invoke<string>('start_recording');
       setIsRecording(true);
     } catch (error) {
-      setMessage({ type: 'error', text: `Failed to start recording: ${error}` });
+      setMessage({
+        type: 'error',
+        text: `Failed to start recording: ${error instanceof Error ? error.message : String(error)}`,
+      });
       setTranscriptionText('Press "Start Recording" and speak your command...');
     }
   };
 
-  const handleStopRecording = async () => {
+  const handleStopRecording = async (): Promise<void> => {
     try {
       setIsProcessing(true);
       setTranscriptionText('Processing...');
 
-      const voiceCommand = await invoke('stop_recording');
+      const voiceCommand = await invoke<VoiceCommand>('stop_recording');
       setIsRecording(false);
 
       // Display the transcription
       setTranscriptionText(voiceCommand.text || '(No speech detected)');
 
       // Process the command
-      const commandType = await invoke('process_voice_command', { command: voiceCommand });
+      const commandType = await invoke<CommandType | null>('process_voice_command', {
+        command: voiceCommand,
+      });
 
       if (commandType) {
         const messageText = COMMAND_MESSAGES[commandType] || `Command triggered: ${commandType}`;
         setMessage({
           type: 'command',
           text: messageText,
-          commandType
+          commandType,
         });
       } else {
         setMessage({
           type: 'info',
-          text: 'No matching command found. Try: "hello", "start", "stop", "status", or "help"'
+          text: 'No matching command found. Try: "hello", "start", "stop", "status", or "help"',
         });
       }
     } catch (error) {
-      setMessage({ type: 'error', text: `Failed to transcribe: ${error}` });
+      setMessage({
+        type: 'error',
+        text: `Failed to transcribe: ${error instanceof Error ? error.message : String(error)}`,
+      });
       setIsRecording(false);
       setTranscriptionText('Press "Start Recording" and speak your command...');
     } finally {
@@ -110,12 +117,12 @@ function App() {
 
       <div className="status-section">
         <div className="status-indicator">
-          <div className={`status-dot ${isInitialized ? 'active' : ''}`}></div>
+          <div className={`status-dot ${isInitialized ? 'active' : ''}`} />
           <span>{isInitialized ? 'Initialized - Ready' : 'Not initialized'}</span>
         </div>
         {isRecording && (
           <div className="status-indicator">
-            <div className="status-dot active"></div>
+            <div className="status-dot active" />
             <span>Recording...</span>
           </div>
         )}
@@ -124,7 +131,9 @@ function App() {
       {!isInitialized && (
         <>
           <div className="model-path-section">
-            <label htmlFor="modelPath"><strong>Whisper Model Path:</strong></label>
+            <label htmlFor="modelPath">
+              <strong>Whisper Model Path:</strong>
+            </label>
             <input
               type="text"
               id="modelPath"
@@ -146,11 +155,7 @@ function App() {
           </div>
 
           <div className="controls">
-            <button
-              className="btn-init"
-              onClick={handleInitialize}
-              disabled={isProcessing}
-            >
+            <button className="btn-init" onClick={handleInitialize} disabled={isProcessing}>
               Initialize Voice System
             </button>
           </div>
@@ -184,7 +189,8 @@ function App() {
             {message.type === 'error' && <strong>Error:</strong>}{' '}
             {message.type === 'command' && (
               <>
-                <strong>Command detected:</strong> {message.commandType}<br />
+                <strong>Command detected:</strong> {message.commandType}
+                <br />
                 <strong>Action:</strong>{' '}
               </>
             )}
