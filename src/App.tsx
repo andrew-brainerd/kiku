@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import './App.css';
 import type { VoiceCommand, Message, CommandType } from './types';
 import { COMMAND_MESSAGES } from './types';
 
@@ -111,28 +110,31 @@ function App() {
   };
 
   return (
-    <div className="container">
-      <h1>kiku</h1>
-      <p className="subtitle">Voice Command Application</p>
+    <div className="bg-white/10 backdrop-blur-lg rounded-3xl px-10 py-12 max-w-2xl w-full shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
+      {/* Header */}
+      <h1 className="text-5xl font-bold m-0 mb-2.5 text-center">kiku</h1>
+      <p className="text-center opacity-90 mb-8 text-lg">Voice Command Application</p>
 
-      <div className="status-section">
-        <div className="status-indicator">
+      {/* Status Section */}
+      <div className="bg-white/10 p-5 rounded-xl mb-5">
+        <div className="flex items-center gap-2.5 mb-2.5">
           <div className={`status-dot ${isInitialized ? 'active' : ''}`} />
           <span>{isInitialized ? 'Initialized - Ready' : 'Not initialized'}</span>
         </div>
         {isRecording && (
-          <div className="status-indicator">
+          <div className="flex items-center gap-2.5">
             <div className="status-dot active" />
             <span>Recording...</span>
           </div>
         )}
       </div>
 
+      {/* Initialization Section */}
       {!isInitialized && (
         <>
-          <div className="model-path-section">
-            <label htmlFor="modelPath">
-              <strong>Whisper Model Path:</strong>
+          <div className="mb-5">
+            <label htmlFor="modelPath" className="font-bold">
+              Whisper Model Path:
             </label>
             <input
               type="text"
@@ -140,39 +142,47 @@ function App() {
               placeholder="e.g., C:/models/ggml-base.en.bin"
               value={modelPath}
               onChange={(e) => setModelPath(e.target.value)}
+              className="w-full p-3 rounded-lg border-2 border-white/30 bg-white/10 text-white text-base mt-2.5 placeholder:text-white/60 focus:outline-none focus:border-white/50 transition-colors"
             />
-            <div className="help-text">
+            <div className="text-sm opacity-80 mt-2">
               Download Whisper models from:{' '}
               <a
                 href="https://huggingface.co/ggerganov/whisper.cpp"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: '#a8daff' }}
+                className="text-blue-300 hover:text-blue-200 transition-colors underline"
               >
                 Hugging Face
               </a>
             </div>
           </div>
 
-          <div className="controls">
-            <button className="btn-init" onClick={handleInitialize} disabled={isProcessing}>
+          <div className="flex gap-4 mb-5">
+            <button
+              className="btn-base bg-green-600 hover:bg-green-700"
+              onClick={handleInitialize}
+              disabled={isProcessing}
+            >
               Initialize Voice System
             </button>
           </div>
         </>
       )}
 
+      {/* Recording Controls */}
       {isInitialized && (
-        <div className="controls">
+        <div className="flex gap-4 mb-5">
           <button
-            className={`btn-record ${isRecording ? 'recording' : ''}`}
+            className={`btn-base bg-blue-600 hover:bg-blue-700 ${
+              isRecording ? 'bg-red-500 hover:bg-red-600 animate-recording-pulse' : ''
+            }`}
             onClick={handleStartRecording}
             disabled={isRecording || isProcessing}
           >
             Start Recording
           </button>
           <button
-            className="btn-stop"
+            className="btn-base bg-orange-500 hover:bg-orange-600"
             onClick={handleStopRecording}
             disabled={!isRecording || isProcessing}
           >
@@ -181,11 +191,18 @@ function App() {
         </div>
       )}
 
-      <div className="transcription">
-        <h3>Transcription Result:</h3>
-        <div className="transcription-text">{transcriptionText}</div>
+      {/* Transcription Result */}
+      <div className="bg-white/10 p-5 rounded-xl min-h-[100px] mb-5">
+        <h3 className="mt-0 text-xl font-semibold mb-3">Transcription Result:</h3>
+        <div className="text-lg leading-relaxed min-h-[60px]">{transcriptionText}</div>
         {message && (
-          <div className={message.type === 'error' ? 'error' : 'command-result'}>
+          <div
+            className={`p-4 rounded-xl mt-4 ${
+              message.type === 'error'
+                ? 'bg-red-500/30 border-l-4 border-red-500'
+                : 'bg-green-500/30 border-l-4 border-green-500'
+            }`}
+          >
             {message.type === 'error' && <strong>Error:</strong>}{' '}
             {message.type === 'command' && (
               <>
