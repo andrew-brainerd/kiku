@@ -28,6 +28,7 @@ pub struct ListeningEvent {
     pub message: String,
 }
 
+#[derive(Clone)]
 pub struct VoiceCommandHandler {
     recorder: Arc<Mutex<AudioRecorder>>,
     transcriber: Arc<WhisperTranscriber>,
@@ -82,25 +83,35 @@ impl VoiceCommandHandler {
         Ok(())
     }
 
-    pub fn stop_recording_and_transcribe(&self) -> Result<VoiceCommand> {
-        let recorder = self.recorder.lock();
-        let samples = recorder.stop_recording();
+    pub async fn stop_recording_and_transcribe(&self) -> Result<VoiceCommand> {
+        // Stop recording and get samples - drop the lock immediately
+        let (samples, original_sample_rate) = {
+            let recorder = self.recorder.lock();
+            let samples = recorder.stop_recording();
+            let original_sample_rate = 48000; // You might want to detect this dynamically
+            (samples, original_sample_rate)
+        };
 
         if samples.is_empty() {
             return Err(anyhow::anyhow!("No audio data recorded"));
         }
 
-        // Get the original sample rate from the device (typically 44100 or 48000)
-        let original_sample_rate = 48000; // You might want to detect this dynamically
-
         // Convert to mono 16kHz as required by Whisper
-        let resampled = recorder.convert_to_16khz_mono(&samples, original_sample_rate);
+        let resampled = {
+            let recorder = self.recorder.lock();
+            recorder.convert_to_16khz_mono(&samples, original_sample_rate)
+        };
 
-        // Transcribe the audio
-        let text = self
-            .transcriber
-            .transcribe(&resampled)
-            .context("Failed to transcribe audio")?;
+        // Clone transcriber Arc for the blocking task
+        let transcriber = Arc::clone(&self.transcriber);
+
+        // Transcribe the audio in a blocking task to avoid blocking the async runtime
+        let text = tokio::task::spawn_blocking(move || {
+            transcriber.transcribe(&resampled)
+        })
+        .await
+        .context("Failed to spawn transcription task")?
+        .context("Failed to transcribe audio")?;
 
         Ok(VoiceCommand {
             text,
@@ -178,7 +189,7 @@ impl VoiceCommandHandler {
     }
 
     /// Record a command after wake word detected, auto-stopping on silence
-    pub fn record_command_with_vad(&self) -> Result<VoiceCommand> {
+    pub async fn record_command_with_vad(&self) -> Result<VoiceCommand> {
         // Start recording
         self.recorder.lock().start_recording()
             .context("Failed to start recording")?;
@@ -192,7 +203,8 @@ impl VoiceCommandHandler {
 
         // Record until silence detected or max duration reached
         loop {
-            std::thread::sleep(chunk_duration);
+            // Use tokio sleep instead of std::thread::sleep to not block
+            tokio::time::sleep(chunk_duration).await;
 
             // Check if max duration exceeded
             if start_time.elapsed() > max_recording_duration {
@@ -216,21 +228,34 @@ impl VoiceCommandHandler {
             }
         }
 
-        // Stop recording and transcribe
-        let recorder = self.recorder.lock();
-        let samples = recorder.stop_recording();
+        // Stop recording and transcribe - drop the lock immediately
+        let (samples, original_sample_rate) = {
+            let recorder = self.recorder.lock();
+            let samples = recorder.stop_recording();
+            let original_sample_rate = 48000;
+            (samples, original_sample_rate)
+        };
 
         if samples.is_empty() {
             return Err(anyhow::anyhow!("No audio data recorded"));
         }
 
         // Convert to 16kHz mono
-        let original_sample_rate = 48000;
-        let resampled = recorder.convert_to_16khz_mono(&samples, original_sample_rate);
+        let resampled = {
+            let recorder = self.recorder.lock();
+            recorder.convert_to_16khz_mono(&samples, original_sample_rate)
+        };
 
-        // Transcribe the audio
-        let text = self.transcriber.transcribe(&resampled)
-            .context("Failed to transcribe audio")?;
+        // Clone transcriber Arc for the blocking task
+        let transcriber = Arc::clone(&self.transcriber);
+
+        // Transcribe the audio in a blocking task to avoid blocking the async runtime
+        let text = tokio::task::spawn_blocking(move || {
+            transcriber.transcribe(&resampled)
+        })
+        .await
+        .context("Failed to spawn transcription task")?
+        .context("Failed to transcribe audio")?;
 
         Ok(VoiceCommand {
             text,

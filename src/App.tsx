@@ -17,6 +17,8 @@ function App() {
     'Initializing...'
   );
   const [message, setMessage] = useState<Message | null>(null);
+  const [commandHistory, setCommandHistory] = useState<VoiceCommand[]>([]);
+  const [logFilePath, setLogFilePath] = useState<string>('');
   const initializingRef = useRef<boolean>(false);
 
   // Load saved settings on mount and auto-initialize
@@ -100,6 +102,14 @@ function App() {
           }
         } else if (!savedPath) {
           setTranscriptionText('No model found. Please download a model from Settings.');
+        }
+
+        // Load log file path
+        try {
+          const path = await invoke<string>('get_log_file_path');
+          setLogFilePath(path);
+        } catch (error) {
+          console.log('Error getting log file path:', error);
         }
       } catch (error) {
         console.log('Error loading settings', error);
@@ -194,6 +204,16 @@ function App() {
 
         // Display the transcription
         setTranscriptionText(voiceCommand.text || '(No speech detected)');
+
+        // Add to command history and log to file
+        if (voiceCommand.text) {
+          setCommandHistory(prev => [voiceCommand, ...prev]);
+          try {
+            await invoke('log_voice_command', { command: voiceCommand });
+          } catch (error) {
+            console.error('Failed to log voice command:', error);
+          }
+        }
 
         // Check if wake word was in the command
         const text = voiceCommand.text.toLowerCase();
@@ -378,6 +398,35 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Command History */}
+      {commandHistory.length > 0 && (
+        <div className="mb-5 max-h-[300px] overflow-y-auto rounded-xl bg-white/10 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="mt-0 text-xl font-semibold">Command History (Session)</h3>
+            {logFilePath && (
+              <span className="text-xs opacity-60">
+                Log: {logFilePath}
+              </span>
+            )}
+          </div>
+          <div className="space-y-2">
+            {commandHistory.map((cmd, index) => (
+              <div
+                key={`${cmd.timestamp}-${index}`}
+                className="rounded-lg bg-white/5 p-3 text-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex-1 break-words">{cmd.text}</span>
+                  <span className="text-xs opacity-60 whitespace-nowrap">
+                    {new Date(cmd.timestamp * 1000).toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -45,14 +45,19 @@ fn start_recording(state: State<AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn stop_recording(state: State<AppState>) -> Result<VoiceCommand, String> {
-    let handler_lock = state.voice_handler.lock();
-    let handler = handler_lock
-        .as_ref()
-        .ok_or("Voice system not initialized")?;
+async fn stop_recording(state: State<'_, AppState>) -> Result<VoiceCommand, String> {
+    // Clone the handler Arc to avoid holding the lock across await
+    let handler_arc = {
+        let handler_lock = state.voice_handler.lock();
+        handler_lock
+            .as_ref()
+            .ok_or("Voice system not initialized")?
+            .clone()
+    };
 
-    let command = handler
+    let command = handler_arc
         .stop_recording_and_transcribe()
+        .await
         .map_err(|e| e.to_string())?;
 
     Ok(command)
@@ -123,14 +128,19 @@ fn is_background_listening(state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
-fn record_command_with_vad(state: State<AppState>) -> Result<VoiceCommand, String> {
-    let handler_lock = state.voice_handler.lock();
-    let handler = handler_lock
-        .as_ref()
-        .ok_or("Voice system not initialized")?;
+async fn record_command_with_vad(state: State<'_, AppState>) -> Result<VoiceCommand, String> {
+    // Clone the handler Arc to avoid holding the lock across await
+    let handler_arc = {
+        let handler_lock = state.voice_handler.lock();
+        handler_lock
+            .as_ref()
+            .ok_or("Voice system not initialized")?
+            .clone()
+    };
 
-    let command = handler
+    let command = handler_arc
         .record_command_with_vad()
+        .await
         .map_err(|e| e.to_string())?;
 
     Ok(command)
@@ -263,6 +273,65 @@ fn set_audio_device(state: State<AppState>, device_name: Option<String>) -> Resu
     }
 }
 
+#[tauri::command]
+async fn log_voice_command(app: tauri::AppHandle, command: VoiceCommand) -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+
+    // Get the app data directory
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create logs directory if it doesn't exist
+    let logs_dir = app_data_dir.join("logs");
+    fs::create_dir_all(&logs_dir)
+        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
+    // Create log file path with current date
+    let log_file = logs_dir.join("voice_commands.log");
+
+    // Format log entry
+    let timestamp = std::time::SystemTime::UNIX_EPOCH
+        .elapsed()
+        .unwrap_or_default()
+        .as_secs();
+    let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp as i64, 0)
+        .unwrap_or_default()
+        .format("%Y-%m-%d %H:%M:%S UTC");
+
+    let log_entry = format!(
+        "[{}] {} (confidence: {})\n",
+        datetime,
+        command.text,
+        command.confidence
+    );
+
+    // Append to log file
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+        .map_err(|e| format!("Failed to open log file: {}", e))?;
+
+    file.write_all(log_entry.as_bytes())
+        .map_err(|e| format!("Failed to write to log file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let log_file = app_data_dir.join("logs").join("voice_commands.log");
+    Ok(log_file.to_string_lossy().to_string())
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -291,7 +360,9 @@ pub fn run() {
             list_available_models,
             get_models_directory,
             list_audio_devices,
-            set_audio_device
+            set_audio_device,
+            log_voice_command,
+            get_log_file_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
