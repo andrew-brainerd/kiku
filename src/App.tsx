@@ -26,7 +26,24 @@ function App() {
         const store = await Store.load('settings.json');
 
         // Load saved model path
-        const savedPath = await store.get<string>('modelPath');
+        let savedPath = await store.get<string>('modelPath');
+
+        // If no saved path, check for models in AppData directory
+        if (!savedPath) {
+          try {
+            const availableModels = await invoke<string[]>('list_available_models');
+            if (availableModels.length > 0) {
+              // Use the first available model
+              savedPath = await invoke<string>('get_model_path', { modelName: availableModels[0] });
+              // Save this path for future use
+              await store.set('modelPath', savedPath);
+              await store.save();
+            }
+          } catch (error) {
+            console.log('Error checking for models in AppData:', error);
+          }
+        }
+
         if (savedPath) {
           setModelPath(savedPath);
         }
@@ -67,6 +84,8 @@ function App() {
           } finally {
             setIsProcessing(false);
           }
+        } else if (!savedPath) {
+          setTranscriptionText('No model found. Please download a model from Settings.');
         }
       } catch (error) {
         console.log('Error loading settings', error);

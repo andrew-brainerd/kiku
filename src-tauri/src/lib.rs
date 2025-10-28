@@ -194,6 +194,56 @@ async fn get_model_path(app: tauri::AppHandle, model_name: String) -> Result<Str
     Ok(model_path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn list_available_models(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    use std::fs;
+
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let models_dir = app_data_dir.join("models");
+
+    // Check if models directory exists
+    if !models_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    // Read directory and collect .bin files
+    let mut models = Vec::new();
+    let entries = fs::read_dir(&models_dir)
+        .map_err(|e| format!("Failed to read models directory: {}", e))?;
+
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(extension) = path.extension() {
+                    if extension == "bin" {
+                        if let Some(file_name) = path.file_name() {
+                            models.push(file_name.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(models)
+}
+
+#[tauri::command]
+async fn get_models_directory(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let models_dir = app_data_dir.join("models");
+    Ok(models_dir.to_string_lossy().to_string())
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -218,7 +268,9 @@ pub fn run() {
             is_background_listening,
             record_command_with_vad,
             download_model,
-            get_model_path
+            get_model_path,
+            list_available_models,
+            get_models_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -58,21 +58,30 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
   const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [customPath, setCustomPath] = useState<string>(modelPath);
+  const [modelsDirectory, setModelsDirectory] = useState<string>('');
 
-  // Load saved selected model on mount
+  // Load saved selected model and available models on mount
   useEffect(() => {
-    const loadSelectedModel = async () => {
+    const loadSettings = async () => {
       try {
         const store = await Store.load('settings.json');
         const savedModel = await store.get<string>('selectedModel');
         if (savedModel) {
           setSelectedModel(savedModel);
         }
+
+        // Load available models from AppData
+        const available = await invoke<string[]>('list_available_models');
+        setDownloadedModels(available);
+
+        // Get models directory path
+        const modelsDir = await invoke<string>('get_models_directory');
+        setModelsDirectory(modelsDir);
       } catch (error) {
-        console.log('Error loading selected model', error);
+        console.log('Error loading settings', error);
       }
     };
-    void loadSelectedModel();
+    void loadSettings();
   }, []);
 
   // Handle model selection change and save to store
@@ -100,10 +109,9 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
       setStatusMessage(result);
       setDownloadProgress(100);
 
-      // Add to downloaded models list
-      if (!downloadedModels.includes(selectedModel)) {
-        setDownloadedModels([...downloadedModels, selectedModel]);
-      }
+      // Refresh available models list
+      const available = await invoke<string[]>('list_available_models');
+      setDownloadedModels(available);
 
       // Auto-update model path
       const newPath = await invoke<string>('get_model_path', { modelName: selectedModel });
@@ -156,6 +164,11 @@ export default function Settings({ onBack, modelPath, onModelPathChange }: Setti
         <p className="mb-4 text-sm text-white/70">
           Download pre-trained Whisper models for offline voice recognition
         </p>
+        {modelsDirectory && (
+          <p className="mb-4 text-xs text-white/60">
+            Models directory: <code className="rounded bg-white/10 px-1.5 py-0.5">{modelsDirectory}</code>
+          </p>
+        )}
 
         <div className="mb-4">
           <label className="mb-2 block text-sm font-medium">Select Model</label>
