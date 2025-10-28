@@ -4,6 +4,7 @@ import type { VoiceCommand, Message, CommandType } from './types';
 import { COMMAND_MESSAGES } from './types';
 import Settings from './components/Settings';
 import { Store } from '@tauri-apps/plugin-store';
+import { useWebSpeechAPI } from './hooks/useWebSpeechAPI';
 
 type View = 'main' | 'settings';
 
@@ -20,6 +21,99 @@ function App() {
   const [commandHistory, setCommandHistory] = useState<VoiceCommand[]>([]);
   const [logFilePath, setLogFilePath] = useState<string>('');
   const initializingRef = useRef<boolean>(false);
+  const isRecordingRef = useRef<boolean>(false);
+
+  // Web Speech API integration for detecting speech
+  const webSpeech = useWebSpeechAPI({
+    continuous: true,
+    interimResults: true,
+    onSpeechStart: async () => {
+      if (!isInitialized || isRecordingRef.current) return;
+
+      console.log('Speech detected - starting Whisper recording...');
+      isRecordingRef.current = true;
+      setTranscriptionText('Listening... (Recording with Whisper)');
+
+      try {
+        await invoke('start_recording');
+      } catch (error) {
+        console.error('Failed to start Whisper recording:', error);
+        isRecordingRef.current = false;
+        setMessage({
+          type: 'error',
+          text: `Failed to start recording: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    },
+    onSpeechEnd: async () => {
+      if (!isInitialized || !isRecordingRef.current) return;
+
+      console.log('Speech ended - getting Whisper transcription...');
+      setTranscriptionText('Processing transcription...');
+
+      try {
+        const voiceCommand = await invoke<VoiceCommand>('stop_recording');
+        isRecordingRef.current = false;
+
+        // Display the transcription
+        setTranscriptionText(voiceCommand.text || '(No speech detected)');
+
+        // Add to command history and log to file
+        if (voiceCommand.text) {
+          setCommandHistory(prev => [voiceCommand, ...prev]);
+          try {
+            await invoke('log_voice_command', { command: voiceCommand });
+          } catch (error) {
+            console.error('Failed to log voice command:', error);
+          }
+
+          // Check if wake word was in the command
+          const text = voiceCommand.text.toLowerCase();
+          if (text.includes('kiku') || text.includes('computer')) {
+            setMessage({ type: 'info', text: 'Wake word detected!' });
+
+            // Process the command
+            const commandType = await invoke<CommandType | null>('process_voice_command', {
+              command: voiceCommand,
+            });
+
+            if (commandType) {
+              const messageText =
+                COMMAND_MESSAGES[commandType] || `Command triggered: ${commandType}`;
+              setMessage({
+                type: 'command',
+                text: messageText,
+                commandType,
+              });
+            }
+          }
+        }
+
+        // Ready for next command
+        setTranscriptionText('Listening for wake word ("kiku" or "computer")...');
+      } catch (error) {
+        console.error('Failed to get Whisper transcription:', error);
+        isRecordingRef.current = false;
+        setMessage({
+          type: 'error',
+          text: `Transcription failed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        setTranscriptionText('Listening for wake word ("kiku" or "computer")...');
+      }
+    },
+    onError: (error) => {
+      console.error('Web Speech API error:', error);
+      // Only show critical errors to the user (not-allowed, service-not-allowed)
+      // Other errors like "no-speech" are handled automatically
+      if (error === 'not-allowed' || error === 'service-not-allowed') {
+        setMessage({
+          type: 'error',
+          text: `Microphone access denied. Please allow microphone access in your browser settings.`,
+        });
+        setIsListening(false);
+      }
+    },
+  });
 
   // Load saved settings on mount and auto-initialize
   useEffect(() => {
@@ -77,17 +171,14 @@ function App() {
               }
             }
 
-            // Start background listening
-            await invoke<string>('start_background_listening');
+            // Start Web Speech API listening
+            webSpeech.startListening();
             setIsListening(true);
             setTranscriptionText('Listening for wake word ("kiku" or "computer")...');
 
-            // Start polling for wake word detection (deferred to next tick)
-            setTimeout(() => void startWakeWordDetection(), 0);
-
             setMessage({
               type: 'success',
-              text: 'Voice system initialized and listening started automatically'
+              text: 'Voice system initialized. Using Web Speech API to trigger Whisper transcription.'
             });
           } catch (error) {
             console.error('Auto-initialization failed:', error);
@@ -158,14 +249,23 @@ function App() {
       return;
     }
 
+    if (!webSpeech.isSupported) {
+      setMessage({
+        type: 'error',
+        text: 'Web Speech API is not supported in your browser. Please use Chrome, Edge, or Safari.',
+      });
+      return;
+    }
+
     try {
       setMessage(null);
-      await invoke<string>('start_background_listening');
+      webSpeech.startListening();
       setIsListening(true);
       setTranscriptionText('Listening for wake word ("kiku" or "computer")...');
-
-      // Start polling for wake word detection
-      startWakeWordDetection();
+      setMessage({
+        type: 'success',
+        text: 'Started listening with Web Speech API + Whisper transcription'
+      });
     } catch (error) {
       setMessage({
         type: 'error',
@@ -174,89 +274,17 @@ function App() {
     }
   };
 
-  const handleStopListening = async (): Promise<void> => {
+  const handleStopListening = (): void => {
     try {
-      await invoke<string>('stop_background_listening');
+      webSpeech.stopListening();
       setIsListening(false);
       setTranscriptionText('Press "Start Listening" to begin...');
-      setMessage({ type: 'info', text: 'Stopped listening for wake words' });
+      setMessage({ type: 'info', text: 'Stopped listening' });
     } catch (error) {
       setMessage({
         type: 'error',
         text: `Failed to stop listening: ${error instanceof Error ? error.message : String(error)}`,
       });
-    }
-  };
-
-  const startWakeWordDetection = async (): Promise<void> => {
-    while (true) {
-      try {
-        // Check if still listening
-        const listening = await invoke<boolean>('is_background_listening');
-        if (!listening) {
-          setIsListening(false);
-          break;
-        }
-
-        // Record with VAD (will auto-stop on silence)
-        setTranscriptionText('Say "kiku" or "computer" followed by your command...');
-        const voiceCommand = await invoke<VoiceCommand>('record_command_with_vad');
-
-        // Display the transcription
-        setTranscriptionText(voiceCommand.text || '(No speech detected)');
-
-        // Add to command history and log to file
-        if (voiceCommand.text) {
-          setCommandHistory(prev => [voiceCommand, ...prev]);
-          try {
-            await invoke('log_voice_command', { command: voiceCommand });
-          } catch (error) {
-            console.error('Failed to log voice command:', error);
-          }
-        }
-
-        // Check if wake word was in the command
-        const text = voiceCommand.text.toLowerCase();
-        if (text.includes('kiku') || text.includes('computer')) {
-          setMessage({ type: 'info', text: 'Wake word detected!' });
-
-          // Process the command
-          const commandType = await invoke<CommandType | null>('process_voice_command', {
-            command: voiceCommand,
-          });
-
-          if (commandType) {
-            const messageText =
-              COMMAND_MESSAGES[commandType] || `Command triggered: ${commandType}`;
-            setMessage({
-              type: 'command',
-              text: messageText,
-              commandType,
-            });
-          }
-        }
-
-        // Small delay before next iteration
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        // Error in detection loop, log it and stop listening
-        console.error('Wake word detection error:', error);
-        setMessage({
-          type: 'error',
-          text: `Wake word detection failed: ${error instanceof Error ? error.message : String(error)}`,
-        });
-
-        // Stop listening gracefully
-        try {
-          await invoke<string>('stop_background_listening');
-        } catch (stopError) {
-          console.error('Error stopping background listening:', stopError);
-        }
-
-        setIsListening(false);
-        setTranscriptionText('Press "Start Listening" to begin...');
-        break;
-      }
     }
   };
 
@@ -293,12 +321,18 @@ function App() {
       <div className="mb-5 rounded-xl bg-white/10 p-5">
         <div className="mb-2.5 flex items-center gap-2.5">
           <div className={`status-dot ${isInitialized ? 'active' : ''}`} />
-          <span>{isInitialized ? 'Initialized - Ready' : 'Not initialized'}</span>
+          <span>{isInitialized ? 'Whisper Initialized - Ready' : 'Whisper Not initialized'}</span>
+        </div>
+        <div className="mb-2.5 flex items-center gap-2.5">
+          <div className={`status-dot ${webSpeech.isSupported ? 'active' : ''}`} />
+          <span>
+            {webSpeech.isSupported ? 'Web Speech API Supported' : 'Web Speech API Not Supported'}
+          </span>
         </div>
         {isListening && (
           <div className="flex items-center gap-2.5">
             <div className="status-dot active animate-pulse" />
-            <span>Listening for wake words...</span>
+            <span>Listening for wake words... {isRecordingRef.current && '(Recording with Whisper)'}</span>
           </div>
         )}
       </div>
@@ -348,8 +382,8 @@ function App() {
         <div className="mb-5">
           <h3 className="mb-3 text-lg font-semibold">Voice Commands</h3>
           <p className="mb-3 text-sm opacity-80">
-            Say "kiku" or "computer" followed by your command. Recording will auto-stop when you
-            finish speaking.
+            Say "kiku" or "computer" followed by your command. The system uses Web Speech API to
+            detect when you start speaking, then triggers Whisper for high-quality transcription.
           </p>
           <div className="flex gap-4">
             <button
