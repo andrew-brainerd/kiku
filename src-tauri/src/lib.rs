@@ -1,4 +1,5 @@
 mod audio;
+mod vad;
 mod voice_commands;
 mod whisper;
 
@@ -86,6 +87,54 @@ fn is_voice_initialized(state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
+fn start_background_listening(state: State<AppState>) -> Result<String, String> {
+    let handler_lock = state.voice_handler.lock();
+    let handler = handler_lock
+        .as_ref()
+        .ok_or("Voice system not initialized")?;
+
+    handler.start_background_listening().map_err(|e| e.to_string())?;
+
+    Ok("Background listening started".to_string())
+}
+
+#[tauri::command]
+fn stop_background_listening(state: State<AppState>) -> Result<String, String> {
+    let handler_lock = state.voice_handler.lock();
+    let handler = handler_lock
+        .as_ref()
+        .ok_or("Voice system not initialized")?;
+
+    handler.stop_background_listening().map_err(|e| e.to_string())?;
+
+    Ok("Background listening stopped".to_string())
+}
+
+#[tauri::command]
+fn is_background_listening(state: State<AppState>) -> bool {
+    let handler_lock = state.voice_handler.lock();
+    if let Some(handler) = handler_lock.as_ref() {
+        handler.is_background_listening()
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+fn record_command_with_vad(state: State<AppState>) -> Result<VoiceCommand, String> {
+    let handler_lock = state.voice_handler.lock();
+    let handler = handler_lock
+        .as_ref()
+        .ok_or("Voice system not initialized")?;
+
+    let command = handler
+        .record_command_with_vad()
+        .map_err(|e| e.to_string())?;
+
+    Ok(command)
+}
+
+#[tauri::command]
 async fn download_model(app: tauri::AppHandle, model_name: String) -> Result<String, String> {
     use std::fs;
     use std::io::Write;
@@ -164,6 +213,10 @@ pub fn run() {
             get_recording_status,
             process_voice_command,
             is_voice_initialized,
+            start_background_listening,
+            stop_background_listening,
+            is_background_listening,
+            record_command_with_vad,
             download_model,
             get_model_path
         ])

@@ -57,6 +57,11 @@ impl AudioRecorder {
         *self.is_recording.lock()
     }
 
+    /// Get a copy of current samples without stopping recording
+    pub fn get_current_samples(&self) -> Vec<f32> {
+        self.samples.lock().clone()
+    }
+
     fn run<T>(
         &self,
         device: &cpal::Device,
