@@ -15,7 +15,12 @@
       "Bash(pnpm install)",
       "Bash(pnpm run type-check:*)",
       "Bash(pnpm add:*)",
-      "Bash(pnpm run build:*)"
+      "Bash(pnpm run build:*)",
+      "Read(//c/projects/**)",
+      "Bash(pnpm run format:*)",
+      "Bash(pnpm run lint:*)",
+      "Bash(pnpm run lint:fix:*)",
+      "Bash(pnpm run check:*)"
     ],
     "deny": [],
     "ask": []

@@ -110,14 +110,14 @@ function App() {
   };
 
   return (
-    <div className="bg-white/10 backdrop-blur-lg rounded-3xl px-10 py-12 max-w-2xl w-full shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
+    <div className="w-full max-w-2xl rounded-3xl bg-white/10 px-10 py-12 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-lg">
       {/* Header */}
-      <h1 className="text-5xl font-bold m-0 mb-2.5 text-center">kiku</h1>
-      <p className="text-center opacity-90 mb-8 text-lg">Voice Command Application</p>
+      <h1 className="m-0 mb-2.5 text-center text-5xl font-bold">kiku</h1>
+      <p className="mb-8 text-center text-lg opacity-90">Voice Command Application</p>
 
       {/* Status Section */}
-      <div className="bg-white/10 p-5 rounded-xl mb-5">
-        <div className="flex items-center gap-2.5 mb-2.5">
+      <div className="mb-5 rounded-xl bg-white/10 p-5">
+        <div className="mb-2.5 flex items-center gap-2.5">
           <div className={`status-dot ${isInitialized ? 'active' : ''}`} />
           <span>{isInitialized ? 'Initialized - Ready' : 'Not initialized'}</span>
         </div>
@@ -141,23 +141,23 @@ function App() {
               id="modelPath"
               placeholder="e.g., C:/models/ggml-base.en.bin"
               value={modelPath}
-              onChange={(e) => setModelPath(e.target.value)}
-              className="w-full p-3 rounded-lg border-2 border-white/30 bg-white/10 text-white text-base mt-2.5 placeholder:text-white/60 focus:outline-none focus:border-white/50 transition-colors"
+              onChange={e => setModelPath(e.target.value)}
+              className="mt-2.5 w-full rounded-lg border-2 border-white/30 bg-white/10 p-3 text-base text-white transition-colors placeholder:text-white/60 focus:border-white/50 focus:outline-none"
             />
-            <div className="text-sm opacity-80 mt-2">
+            <div className="mt-2 text-sm opacity-80">
               Download Whisper models from:{' '}
               <a
                 href="https://huggingface.co/ggerganov/whisper.cpp"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-300 hover:text-blue-200 transition-colors underline"
+                className="text-blue-300 underline transition-colors hover:text-blue-200"
               >
                 Hugging Face
               </a>
             </div>
           </div>
 
-          <div className="flex gap-4 mb-5">
+          <div className="mb-5 flex gap-4">
             <button
               className="btn-base bg-green-600 hover:bg-green-700"
               onClick={handleInitialize}
@@ -171,10 +171,10 @@ function App() {
 
       {/* Recording Controls */}
       {isInitialized && (
-        <div className="flex gap-4 mb-5">
+        <div className="mb-5 flex gap-4">
           <button
             className={`btn-base bg-blue-600 hover:bg-blue-700 ${
-              isRecording ? 'bg-red-500 hover:bg-red-600 animate-recording-pulse' : ''
+              isRecording ? 'animate-recording-pulse bg-red-500 hover:bg-red-600' : ''
             }`}
             onClick={handleStartRecording}
             disabled={isRecording || isProcessing}
@@ -192,15 +192,15 @@ function App() {
       )}
 
       {/* Transcription Result */}
-      <div className="bg-white/10 p-5 rounded-xl min-h-[100px] mb-5">
-        <h3 className="mt-0 text-xl font-semibold mb-3">Transcription Result:</h3>
-        <div className="text-lg leading-relaxed min-h-[60px]">{transcriptionText}</div>
+      <div className="mb-5 min-h-[100px] rounded-xl bg-white/10 p-5">
+        <h3 className="mt-0 mb-3 text-xl font-semibold">Transcription Result:</h3>
+        <div className="min-h-[60px] text-lg leading-relaxed">{transcriptionText}</div>
         {message && (
           <div
-            className={`p-4 rounded-xl mt-4 ${
+            className={`mt-4 rounded-xl p-4 ${
               message.type === 'error'
-                ? 'bg-red-500/30 border-l-4 border-red-500'
-                : 'bg-green-500/30 border-l-4 border-green-500'
+                ? 'border-l-4 border-red-500 bg-red-500/30'
+                : 'border-l-4 border-green-500 bg-green-500/30'
             }`}
           >
             {message.type === 'error' && <strong>Error:</strong>}{' '}

@@ -19,11 +19,11 @@ export default {
         },
       },
       animation: {
-        pulse: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'pulse': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'recording-pulse': 'recording-pulse 1s ease-in-out infinite',
       },
       keyframes: {
-        pulse: {
+        'pulse': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
         },

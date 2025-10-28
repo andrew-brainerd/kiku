@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+build
+.cache
+
+# Tauri
+src-tauri/target
+
+# Rust
+*.rs
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode
+.idea
+
+# Git
+.git
+.github
