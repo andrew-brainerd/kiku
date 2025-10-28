@@ -2,8 +2,13 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { VoiceCommand, Message, CommandType } from './types';
 import { COMMAND_MESSAGES } from './types';
+import Settings from './components/Settings';
+import { Store } from '@tauri-apps/plugin-store';
+
+type View = 'main' | 'settings';
 
 function App() {
+  const [currentView, setCurrentView] = useState<View>('main');
   const [modelPath, setModelPath] = useState<string>('C:/models/ggml-base.en.bin');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -13,18 +18,40 @@ function App() {
   );
   const [message, setMessage] = useState<Message | null>(null);
 
-  // Check if voice system is already initialized on mount
+  // Load saved settings on mount
   useEffect(() => {
-    const checkInitStatus = async () => {
+    const loadSettings = async () => {
       try {
+        // Load the store
+        const store = await Store.load('settings.json');
+
+        // Load saved model path
+        const savedPath = await store.get<string>('modelPath');
+        if (savedPath) {
+          setModelPath(savedPath);
+        }
+
+        // Check if voice system is already initialized
         const initialized = await invoke<boolean>('is_voice_initialized');
         setIsInitialized(initialized);
       } catch (error) {
-        console.log('Not initialized yet', error);
+        console.log('Error loading settings', error);
       }
     };
-    void checkInitStatus();
+    void loadSettings();
   }, []);
+
+  // Save model path when it changes
+  const handleModelPathChange = async (newPath: string): Promise<void> => {
+    setModelPath(newPath);
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('modelPath', newPath);
+      await store.save();
+    } catch (error) {
+      console.error('Failed to save model path', error);
+    }
+  };
 
   const handleInitialize = async (): Promise<void> => {
     if (!modelPath) {
@@ -109,11 +136,34 @@ function App() {
     }
   };
 
+  // Render settings view
+  if (currentView === 'settings') {
+    return (
+      <Settings
+        onBack={() => setCurrentView('main')}
+        modelPath={modelPath}
+        onModelPathChange={handleModelPathChange}
+      />
+    );
+  }
+
+  // Render main view
   return (
     <div className="w-full max-w-2xl rounded-3xl bg-white/10 px-10 py-12 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-lg">
       {/* Header */}
-      <h1 className="m-0 mb-2.5 text-center text-5xl font-bold">kiku</h1>
-      <p className="mb-8 text-center text-lg opacity-90">Voice Command Application</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div className="flex-1 text-center">
+          <h1 className="m-0 mb-2.5 text-5xl font-bold">kiku</h1>
+          <p className="text-lg opacity-90">Voice Command Application</p>
+        </div>
+        <button
+          onClick={() => setCurrentView('settings')}
+          className="rounded-xl bg-white/20 px-4 py-2 font-medium transition hover:bg-white/30"
+          title="Settings"
+        >
+          ⚙️
+        </button>
+      </div>
 
       {/* Status Section */}
       <div className="mb-5 rounded-xl bg-white/10 p-5">
@@ -141,7 +191,7 @@ function App() {
               id="modelPath"
               placeholder="e.g., C:/models/ggml-base.en.bin"
               value={modelPath}
-              onChange={e => setModelPath(e.target.value)}
+              onChange={e => void handleModelPathChange(e.target.value)}
               className="mt-2.5 w-full rounded-lg border-2 border-white/30 bg-white/10 p-3 text-base text-white transition-colors placeholder:text-white/60 focus:border-white/50 focus:outline-none"
             />
             <div className="mt-2 text-sm opacity-80">

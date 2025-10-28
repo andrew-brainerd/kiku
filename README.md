@@ -54,9 +54,9 @@ pnpm install
 
 ```bash
 pnpm dev
-# or
-pnpm run tauri dev
 ```
+
+This runs `tauri dev`, which starts the Vite dev server and launches the Tauri application window.
 
 ## Build for Production
 

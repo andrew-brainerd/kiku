@@ -6,6 +6,7 @@ use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
+use tauri::Manager;
 use voice_commands::{RecordingStatus, VoiceCommand, VoiceCommandHandler};
 
 pub struct AppState {
@@ -84,11 +85,75 @@ fn is_voice_initialized(state: State<AppState>) -> bool {
     }
 }
 
+#[tauri::command]
+async fn download_model(app: tauri::AppHandle, model_name: String) -> Result<String, String> {
+    use std::fs;
+    use std::io::Write;
+
+    // Get the app data directory
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let models_dir = app_data_dir.join("models");
+    fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models directory: {}", e))?;
+
+    let model_path = models_dir.join(&model_name);
+
+    // Check if model already exists
+    if model_path.exists() {
+        return Ok(format!("Model already downloaded at: {}", model_path.display()));
+    }
+
+    // Download from Hugging Face
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        model_name
+    );
+
+    let response = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("Failed to download model: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to download model: HTTP {}", response.status()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    let mut file = fs::File::create(&model_path)
+        .map_err(|e| format!("Failed to create model file: {}", e))?;
+
+    file.write_all(&bytes)
+        .map_err(|e| format!("Failed to write model file: {}", e))?;
+
+    Ok(format!("Model downloaded successfully to: {}", model_path.display()))
+}
+
+#[tauri::command]
+async fn get_model_path(app: tauri::AppHandle, model_name: String) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let model_path = app_data_dir.join("models").join(&model_name);
+    Ok(model_path.to_string_lossy().to_string())
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState {
             voice_handler: Arc::new(Mutex::new(None)),
         })
@@ -98,7 +163,9 @@ pub fn run() {
             stop_recording,
             get_recording_status,
             process_voice_command,
-            is_voice_initialized
+            is_voice_initialized,
+            download_model,
+            get_model_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
